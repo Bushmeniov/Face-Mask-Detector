@@ -27,23 +27,26 @@ class ScraperGoogle():
 		self.what_to_scrap=what_to_scrap
 		self.max_fetches=max_fetches
 
+		self.URLSset=set() # all URLs of scraping images
+
+	def get_URLS_len(self):
+		"""return len of scraping images"""
+		return len(self.URLSset)
+
 	def run(self):
 		"""RUN Scraping"""
 
-		_URLs=self.steal_photos_url()
-
-		'''for url in _URLs:
-			self.dawload_image(url)'''
+		self.steal_photos_url()
 
 	def steal_photos_url(self):
-
-		urls_tmp = set()  # set of URLs
 
 		self.driver.get(self.URL)
 
 		start=0
 
-		while len(urls_tmp)<self.max_fetches:
+		while self.get_URLS_len()<self.max_fetches:
+
+			urls_tmp = set()
 
 			#scrolling page
 			self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
@@ -57,6 +60,7 @@ class ScraperGoogle():
 				try :
 					image.click() # click to activate image and fetch the src with http
 					time.sleep(1)
+
 				except Exception:
 					continue
 
@@ -77,8 +81,19 @@ class ScraperGoogle():
 					time.sleep(3)
 
 			start = end
+			#new URLs
 
-		return urls_tmp
+			self.dowload_batch_images(urls_tmp)
+
+
+	def dowload_batch_images(self,urls_tmp):
+		difference = urls_tmp - self.URLSset
+
+		for src in difference:
+			self.dawload_image(src)
+
+		self.URLSset = self.URLSset.union(difference)
+
 
 	def dawload_image(self,URL):
 
@@ -92,7 +107,7 @@ class ScraperGoogle():
 			image_file = io.BytesIO(image_content)
 			image = Image.open(image_file).convert("RGB")
 			# hash our image
-			file_path=os.path.join(self.folder_path,hashlib.sha1(image_content).hexdigest()[:10] + '.jpg')
+			file_path=os.path.join(self.folder_path,hashlib.sha1(image_content).hexdigest()[:12] + '.jpg')
 
 			with open(f"{file_path}","wb") as f :
 				image.save(f,"JPEG",quality=85)
@@ -102,7 +117,6 @@ class ScraperGoogle():
 			print(f"Error - couldn't save - {e}")
 
 
-
 class ScraperPixabay(ScraperGoogle):
 
 	def __init__(self,what_to_scrap,max_fetches,folder_path):
@@ -110,17 +124,17 @@ class ScraperPixabay(ScraperGoogle):
 		self.URL = f"https://pixabay.com/ru/images/search/{what_to_scrap}"
 
 	def steal_photos_url(self):
-		urls_tmp = set()  # set of URLs
+
 		pagi = 1
 		URL_additional='/?pagi='
-		while  len(urls_tmp) < self.max_fetches:
+		while  self.get_URLS_len() < self.max_fetches:
+
 			self.driver.get(self.URL+URL_additional+str(pagi))
 			time.sleep(3)
-			data = self.scrapImagesOnPage()
-			urls_tmp=urls_tmp.union(data)
+			urls_tmp = self.scrapImagesOnPage()
 			pagi+=1
 
-		return urls_tmp
+			self.dowload_batch_images(urls_tmp)
 
 	def scrapImagesOnPage(self):
 		pos = 800
@@ -146,24 +160,24 @@ class UnsplashScrapper(ScraperGoogle):
 		self.URL = f"https://unsplash.com/s/photos/{what_to_scrap}"
 
 	def steal_photos_url(self):
-		urls_tmp = set()  # set of URLs
+
 		self.driver.get(self.URL)
 		pos = 800
-		while len(urls_tmp) < self.max_fetches:
+		while self.get_URLS_len() < self.max_fetches:
+			urls_tmp = set()  # set of URLs
 
 			images = self.driver.find_elements_by_css_selector('img')
 			for image in images:
-				if image.get_attribute("src") and ('http' in image.get_attribute('src'))\
-						and ("profile" not in image.get_attribute("src")) and \
-						('images.unsplash.com' in image.get_attribute("src")) and \
-						("avatars" not in image.get_attribute("src")):
-					urls_tmp.add(image.get_attribute("src"))
+				if image.get_attribute("src"):
+					src = image.get_attribute("src")
+					if  ('http' in src) and ("profile" not in src) and ('images.unsplash.com' in src)  \
+								and ("avatars" not in src):
+						urls_tmp.add(image.get_attribute("src"))
 			self.driver.execute_script(f"window.scrollTo(0, {pos});")
-			time.sleep(1.5)
+			time.sleep(5)
 			pos+=800
 
-		return urls_tmp
-
+			self.dowload_batch_images(urls_tmp)
 
 
 class PexelsScrapper(ScraperGoogle):
@@ -173,39 +187,43 @@ class PexelsScrapper(ScraperGoogle):
 		self.URL = f"https://www.pexels.com/ru-ru/search/{what_to_scrap}"
 
 	def steal_photos_url(self):
-		urls_tmp = set()  # set of URLs
+
 		self.driver.get(self.URL)
 		pos = 800
-		while len(urls_tmp) < self.max_fetches:
+		start=0
+		while self.get_URLS_len() < self.max_fetches:
+
+			urls_tmp = set()  # set of URLs
 
 			images = self.driver.find_elements_by_css_selector('img')
-			for image in images:
-				if image.get_attribute("src") and ('https://images.pexels.com/' in image.get_attribute('src')) \
-						and (".jpeg" in image.get_attribute("src")) \
-						and ("profile" not in image.get_attribute("src")) \
-						and	("users" not in image.get_attribute("src")) \
-						and ("avatars" not in image.get_attribute("src")):
+			end = len(images)
 
-					urls_tmp.add(image.get_attribute("src"))
+			for image in images[start:end]:
+				if image.get_attribute("src"):
+					src=image.get_attribute("src")
+					if ('https://images.pexels.com/' in src) and (".jpeg" in src) and ("profile" not in src) \
+								and	("users" not in src) and ("avatars" not in src):
+
+						urls_tmp.add(image.get_attribute("src"))
 			self.driver.execute_script(f"window.scrollTo(0, {pos});")
-			time.sleep(1.5)
+			time.sleep(1)
 			pos += 800
 
-		return urls_tmp
+			start=end
+			self.dowload_batch_images(urls_tmp)
 
 
+scrapGoogle=ScraperGoogle(what_to_scrap="coronavirus%20mask",max_fetches=600,
+						  folder_path="/home/vladislav/PycharmProjects/tftest/with_Mask/")
 
-scrapGoogle=ScraperGoogle(what_to_scrap="dog",max_fetches=100,
-						  folder_path="/home/vladislav/PycharmProjects/tftest/dogs/")
+scrapPixabay=ScraperPixabay(what_to_scrap="coronavirus mask",max_fetches=10000,
+						  folder_path="/home/vladislav/PycharmProjects/tftest/with_Mask/")
 
-scrapPixabay=ScraperPixabay(what_to_scrap="cat",max_fetches=100,
-						  folder_path="/home/vladislav/PycharmProjects/tftest/dogs/")
+scrapUnsplash=UnsplashScrapper(what_to_scrap="coronavirus mask",max_fetches=2000,
+						folder_path="/home/vladislav/PycharmProjects/tftest/with_Mask/")
 
-scrapUnsplash=UnsplashScrapper(what_to_scrap="bee",max_fetches=100,
-						folder_path="/home/vladislav/PycharmProjects/tftest/dogs/")
-
-scrapPexels=PexelsScrapper(what_to_scrap="car",max_fetches=100,
-						   folder_path="/home/vladislav/PycharmProjects/tftest/dogs/")
+scrapPexels=PexelsScrapper(what_to_scrap="medicine mask",max_fetches=1400,
+						   folder_path="/home/vladislav/PycharmProjects/tftest/with_Mask/")
 
 
 if "__main__" == "__main__":
@@ -220,7 +238,7 @@ if "__main__" == "__main__":
 
 		processes = []
 
-		for scraper in (scrapPexels,scrapPixabay,scrapGoogle,scrapUnsplash):
+		for scraper in (scrapGoogle,scrapPexels,scrapUnsplash,scrapPixabay):
 			process=Process(target=run,args=(scraper,))
 			processes.append(process)
 			process.start()
